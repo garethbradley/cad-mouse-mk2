@@ -7,6 +7,10 @@
 #include "StateMachine.h"
 
 void SleepState::enter() {
+  if (Config::ENABLE_DUAL_CORE_MOTION) {
+    motionWorkerController.stopAndWait();
+  }
+
   ledController.off();
 }
 

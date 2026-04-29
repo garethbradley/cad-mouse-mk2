@@ -7,6 +7,10 @@
 #include "StateMachine.h"
 
 void CalibratingState::enter() {
+  if (Config::ENABLE_DUAL_CORE_MOTION) {
+    motionWorkerController.stopAndWait();
+  }
+
   sensorController.beginCalibration();
   motionController.reset();
   ledController.startSpinner(Config::LED_CALIBRATING_COLOR);

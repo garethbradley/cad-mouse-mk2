@@ -1,17 +1,44 @@
 #include "controllers/TelemetryController.h"
 #include <Arduino.h>
 #include "Config.h"
+#include "controllers/MotionWorkerController.h"
 
 namespace {
 const int kPrintEvery = 5;
+
+void printFieldVector(const char* prefix, const float field[9]) {
+  for (int sensor = 0; sensor < 3; ++sensor) {
+    const int base = sensor * 3;
+    Serial.print(prefix);
+    Serial.print(sensor + 1);
+    Serial.print('x');
+    Serial.print(':');
+    Serial.println(field[base + 0]);
+
+    Serial.print(prefix);
+    Serial.print(sensor + 1);
+    Serial.print('y');
+    Serial.print(':');
+    Serial.println(field[base + 1]);
+
+    Serial.print(prefix);
+    Serial.print(sensor + 1);
+    Serial.print('z');
+    Serial.print(':');
+    Serial.println(field[base + 2]);
+  }
+}
 }
 
 void TelemetryController::begin() { tick_ = 0; }
 
 bool TelemetryController::enabled() const { return Config::ENABLE_TELEMETRY; }
 
-void TelemetryController::publish(const float motion[6], int buttonBits,
-                                  bool hidReportSent) {
+void TelemetryController::publish(const float motion[6], const float measuredField[9],
+                                  const float predictedField[9],
+                                  const float estimatedPose[6], float residualRms,
+                                  float covarianceTrace, int buttonBits,
+                                  bool hidReportSent, const MotionWorkerTiming* timing) {
   if (!enabled()) {
     return;
   }
@@ -37,4 +64,39 @@ void TelemetryController::publish(const float motion[6], int buttonBits,
   Serial.println(buttonBits & 0x0003);
   Serial.print(">hid:");
   Serial.println(hidReportSent ? 1 : 0);
+
+  Serial.print(">Etx:");
+  Serial.println(estimatedPose[0]);
+  Serial.print(">Ety:");
+  Serial.println(estimatedPose[1]);
+  Serial.print(">Etz:");
+  Serial.println(estimatedPose[2]);
+  Serial.print(">Erx:");
+  Serial.println(estimatedPose[3]);
+  Serial.print(">Ery:");
+  Serial.println(estimatedPose[4]);
+  Serial.print(">Erz:");
+  Serial.println(estimatedPose[5]);
+  Serial.print(">Erms:");
+  Serial.println(residualRms);
+  Serial.print(">Ptr:");
+  Serial.println(covarianceTrace);
+
+  if (timing != nullptr) {
+    Serial.print(">tCycle:");
+    Serial.println(timing->loopCycleUs);
+    Serial.print(">tJacobian:");
+    Serial.println(timing->jacobianUs);
+    Serial.print(">tMin:");
+    Serial.println(timing->minCycleUs);
+    Serial.print(">tMax:");
+    Serial.println(timing->maxCycleUs);
+    Serial.print(">tAvg:");
+    Serial.println(timing->avgCycleUs);
+  }
+
+  if (Config::TELEMETRY_INCLUDE_FIELD_MODEL) {
+    printFieldVector(">m", measuredField);
+    printFieldVector(">p", predictedField);
+  }
 }

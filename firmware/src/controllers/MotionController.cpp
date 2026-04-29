@@ -41,6 +41,7 @@ const float kMag1PosY = -kSqrt3Over3;
 }  // namespace
 
 void MotionController::reset() {
+  estimator_.reset();
   for (int i = 0; i < 6; i++) {
     kalmanX_[i] = 0.0f;
     kalmanP_[i] = 1.0f;
@@ -92,6 +93,8 @@ float MotionController::sensitivityCurve(float value, float dead, float limit) {
 
 void MotionController::compute(const float raw[9], const float* baseline, float dt,
                                float out[6]) {
+  estimator_.predict(dt);
+
   // Baseline subtraction converts magnetic deltas around the calibrated rest pose.
   const float mag1x = raw[RAW_MAG1_X] - baseline[RAW_MAG1_X];
   const float mag1y = raw[RAW_MAG1_Y] - baseline[RAW_MAG1_Y];
@@ -103,21 +106,43 @@ void MotionController::compute(const float raw[9], const float* baseline, float 
   const float mag3y = raw[RAW_MAG3_Y] - baseline[RAW_MAG3_Y];
   const float mag3z = raw[RAW_MAG3_Z] - baseline[RAW_MAG3_Z];
 
-  // Translation: average of all three sensors.
-  const float tx = (mag1x + mag2x + mag3x) * kOneThird;
-  const float ty = (mag1y + mag2y + mag3y) * kOneThird;
-  const float tz = (mag1z + mag2z + mag3z) * kOneThird;
+  const float measuredField[9] = {
+      mag1x, mag1y, mag1z, mag2x, mag2y, mag2z, mag3x, mag3y, mag3z,
+  };
+  estimator_.update(measuredField);
 
-  // Rotation estimates from sensor triangle geometry.
-  //   Ry: side-to-side tilt (right sensor minus left)
-  //   Rx: front/back tilt (top pair minus bottom)
-  //   Rz: twist (cross-product per sensor position)
-  const float rx = (kSqrt3 * (mag2z + mag3z - 2.0f * mag1z)) * kOneThird;
-  const float ry = (mag3z - mag2z);
-  const float rz =
-      (kMag2PosX * mag2y - kMag2PosY * mag2x) +
-      (kMag3PosX * mag3y - kMag3PosY * mag3x) +
-      (kMag1PosX * mag1y - kMag1PosY * mag1x);
+  float tx;
+  float ty;
+  float tz;
+  float rx;
+  float ry;
+  float rz;
+
+  if (Config::USE_EKF_MOTION_OUTPUT) {
+    const EKFEngine::PoseState& s = estimator_.state();
+    tx = s.tx;
+    ty = s.ty;
+    tz = s.tz;
+    rx = s.rx;
+    ry = s.ry;
+    rz = s.rz;
+  } else {
+    // Translation: average of all three sensors.
+    tx = (mag1x + mag2x + mag3x) * kOneThird;
+    ty = (mag1y + mag2y + mag3y) * kOneThird;
+    tz = (mag1z + mag2z + mag3z) * kOneThird;
+
+    // Rotation estimates from sensor triangle geometry.
+    //   Ry: side-to-side tilt (right sensor minus left)
+    //   Rx: front/back tilt (top pair minus bottom)
+    //   Rz: twist (cross-product per sensor position)
+    rx = (kSqrt3 * (mag2z + mag3z - 2.0f * mag1z)) * kOneThird;
+    ry = (mag3z - mag2z);
+    rz =
+        (kMag2PosX * mag2y - kMag2PosY * mag2x) +
+        (kMag3PosX * mag3y - kMag3PosY * mag3x) +
+        (kMag1PosX * mag1y - kMag1PosY * mag1x);
+  }
 
   // Apply sign fixes and gains
   float y[6];
@@ -150,4 +175,24 @@ void MotionController::compute(const float raw[9], const float* baseline, float 
   }
 }
 
+void MotionController::computeExpectedField(float out[9]) const {
+  estimator_.computeExpectedField(estimator_.state(), out);
+}
+
+void MotionController::estimatorPose(float out[6]) const {
+  const EKFEngine::PoseState& s = estimator_.state();
+  out[0] = s.tx;
+  out[1] = s.ty;
+  out[2] = s.tz;
+  out[3] = s.rx;
+  out[4] = s.ry;
+  out[5] = s.rz;
+}
+
+float MotionController::estimatorCovarianceTrace() const {
+  return estimator_.covarianceTrace();
+}
+
 bool MotionController::hasMotionActivity() const { return motionActive_; }
+
+const EKFEngine& MotionController::estimator() const { return estimator_; }
