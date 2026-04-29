@@ -30,9 +30,25 @@ void printFieldVector(const char* prefix, const float field[9]) {
 }
 }
 
-void TelemetryController::begin() { tick_ = 0; }
+void TelemetryController::begin() {
+  tick_ = 0;
 
-bool TelemetryController::enabled() const { return Config::ENABLE_TELEMETRY; }
+  if (!enabled()) {
+    return;
+  }
+
+  Serial.println(">boot:ok");
+  Serial.print(">mode:");
+  Serial.println(Config::ENABLE_SENSORLESS_PROFILING ? "sensorless" : "hardware");
+  Serial.print(">dualCore:");
+  Serial.println(Config::ENABLE_DUAL_CORE_MOTION ? 1 : 0);
+  Serial.print(">ekfOut:");
+  Serial.println(Config::USE_EKF_FOR_HID_OUTPUT ? 1 : 0);
+}
+
+bool TelemetryController::enabled() const {
+  return Config::TELEMETRY_LOG_LEVEL != Config::TELEMETRY_LOG_OFF;
+}
 
 void TelemetryController::publish(const float motion[6], const float measuredField[9],
                                   const float predictedField[9],
@@ -95,7 +111,7 @@ void TelemetryController::publish(const float motion[6], const float measuredFie
     Serial.println(timing->avgCycleUs);
   }
 
-  if (Config::TELEMETRY_INCLUDE_FIELD_MODEL) {
+  if (Config::TELEMETRY_LOG_LEVEL >= Config::TELEMETRY_LOG_FULL) {
     printFieldVector(">m", measuredField);
     printFieldVector(">p", predictedField);
   }

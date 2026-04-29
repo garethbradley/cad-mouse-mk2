@@ -39,7 +39,7 @@ void MotionWorkerController::loop() {
   lastUpdateMs_ = now;
 
   float raw[9] = {};
-  if (!sensorController.readRaw(raw)) {
+  if (!Config::ENABLE_SENSORLESS_PROFILING && !sensorController.readRaw(raw)) {
     workerIdle_ = true;
     return;
   }

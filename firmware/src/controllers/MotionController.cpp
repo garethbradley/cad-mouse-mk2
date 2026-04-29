@@ -42,6 +42,7 @@ const float kMag1PosY = -kSqrt3Over3;
 
 void MotionController::reset() {
   estimator_.reset();
+  ekfUpdateCounter_ = 0;
   for (int i = 0; i < 6; i++) {
     kalmanX_[i] = 0.0f;
     kalmanP_[i] = 1.0f;
@@ -109,7 +110,15 @@ void MotionController::compute(const float raw[9], const float* baseline, float 
   const float measuredField[9] = {
       mag1x, mag1y, mag1z, mag2x, mag2y, mag2z, mag3x, mag3y, mag3z,
   };
-  estimator_.update(measuredField);
+  if (Config::EKF_UPDATE_DECIMATION <= 1) {
+    estimator_.update(measuredField);
+  } else {
+    ekfUpdateCounter_++;
+    if (ekfUpdateCounter_ >= Config::EKF_UPDATE_DECIMATION) {
+      estimator_.update(measuredField);
+      ekfUpdateCounter_ = 0;
+    }
+  }
 
   float tx;
   float ty;
@@ -118,7 +127,7 @@ void MotionController::compute(const float raw[9], const float* baseline, float 
   float ry;
   float rz;
 
-  if (Config::USE_EKF_MOTION_OUTPUT) {
+  if (Config::USE_EKF_FOR_HID_OUTPUT) {
     const EKFEngine::PoseState& s = estimator_.state();
     tx = s.tx;
     ty = s.ty;

@@ -16,7 +16,7 @@ void setup() {
   // Initialize USB HID first
   hidController.begin();
 
-  if (Config::ENABLE_TELEMETRY) {
+  if (Config::TELEMETRY_LOG_LEVEL != Config::TELEMETRY_LOG_OFF) {
     Serial.begin(115200);
     delay(200);
   }

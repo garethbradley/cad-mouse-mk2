@@ -70,19 +70,30 @@ void EKFEngine::update(const float measuredField[9]) {
   float H[9][6] = {};
   for (int axis = 0; axis < 6; ++axis) {
     PoseState plus = state_;
-    PoseState minus = state_;
     const float center = readStateComponent(state_, axis);
     writeStateComponent(plus, axis, center + kJacobianStep);
-    writeStateComponent(minus, axis, center - kJacobianStep);
 
     float hPlus[9] = {};
-    float hMinus[9] = {};
     computeExpectedField(plus, hPlus);
-    computeExpectedField(minus, hMinus);
 
-    const float invTwoStep = 1.0f / (2.0f * kJacobianStep);
-    for (int measurement = 0; measurement < 9; ++measurement) {
-      H[measurement][axis] = (hPlus[measurement] - hMinus[measurement]) * invTwoStep;
+    if (Config::EKF_USE_FORWARD_DIFFERENCE) {
+      const float invStep = 1.0f / kJacobianStep;
+      for (int measurement = 0; measurement < 9; ++measurement) {
+        H[measurement][axis] =
+            (hPlus[measurement] - predicted[measurement]) * invStep;
+      }
+    } else {
+      PoseState minus = state_;
+      writeStateComponent(minus, axis, center - kJacobianStep);
+
+      float hMinus[9] = {};
+      computeExpectedField(minus, hMinus);
+
+      const float invTwoStep = 1.0f / (2.0f * kJacobianStep);
+      for (int measurement = 0; measurement < 9; ++measurement) {
+        H[measurement][axis] =
+            (hPlus[measurement] - hMinus[measurement]) * invTwoStep;
+      }
     }
   }
 
@@ -198,21 +209,27 @@ void EKFEngine::update(const float measuredField[9]) {
 
 void EKFEngine::computeExpectedField(const PoseState& state, float out[9]) const {
   const Config::Vec3 translation = {state.tx, state.ty, state.tz};
+  Config::Vec3 magnetPositions[3] = {};
+  Config::Vec3 magnetMoments[3] = {};
+
+  for (int magnetIndex = 0; magnetIndex < 3; ++magnetIndex) {
+    const Config::Vec3 neutralMagnet =
+        Config::MAGNET_POSITIONS_NEUTRAL[magnetIndex];
+    const Config::Vec3 neutralMoment = Config::MAGNET_MOMENTS_NEUTRAL[magnetIndex];
+    magnetPositions[magnetIndex] =
+        add(rotateSmallAngle(neutralMagnet, state), translation);
+    magnetMoments[magnetIndex] = rotateSmallAngle(neutralMoment, state);
+  }
 
   for (int sensorIndex = 0; sensorIndex < 3; ++sensorIndex) {
     const Config::Vec3 sensorPosition = Config::SENSOR_POSITIONS[sensorIndex];
     Config::Vec3 totalField = {0.0f, 0.0f, 0.0f};
 
     for (int magnetIndex = 0; magnetIndex < 3; ++magnetIndex) {
-      const Config::Vec3 neutralMagnet = Config::MAGNET_POSITIONS_NEUTRAL[magnetIndex];
-      const Config::Vec3 neutralMoment = Config::MAGNET_MOMENTS_NEUTRAL[magnetIndex];
-
-      const Config::Vec3 magnetPosition = add(rotateSmallAngle(neutralMagnet, state),
-                                              translation);
-      const Config::Vec3 magnetMoment = rotateSmallAngle(neutralMoment, state);
       totalField = add(totalField,
-                       dipoleFieldAtPoint(sensorPosition, magnetPosition,
-                                          magnetMoment));
+                       dipoleFieldAtPoint(sensorPosition,
+                                          magnetPositions[magnetIndex],
+                                          magnetMoments[magnetIndex]));
     }
 
     out[sensorIndex * 3 + 0] = totalField.x;

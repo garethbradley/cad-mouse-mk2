@@ -89,6 +89,18 @@ bool SensorController::readRaw(float out[9]) {
 }
 
 void SensorController::beginCalibration() {
+  if (Config::ENABLE_SENSORLESS_PROFILING) {
+    calibrationActive_ = false;
+    calibrationDone_ = true;
+    calibrationSamples_ = 0;
+    lastCalibrationSampleMs_ = 0;
+    for (int i = 0; i < 9; i++) {
+      calibrationSum_[i] = 0.0f;
+      baseline_[i] = 0.0f;
+    }
+    return;
+  }
+
   calibrationActive_ = true;
   calibrationDone_ = false;
   calibrationSamples_ = 0;

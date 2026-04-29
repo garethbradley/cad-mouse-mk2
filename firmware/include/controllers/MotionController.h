@@ -22,6 +22,7 @@ class MotionController {
   float kalmanP_[6] = {};  // Estimate uncertainty (covariance)
   float kalmanStep(int axis, float measurement);
   EKFEngine estimator_;
+  int ekfUpdateCounter_ = 0;
 
   bool motionActive_ = false;
 };
